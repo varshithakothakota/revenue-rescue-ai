@@ -1,0 +1,54 @@
+{
+  "summary": "Full stabilization pass on Revenue Rescue. Backend: created /app/backend/tests/backend_test.py (22 pytest cases covering benchmark generate/clear, system status, overview metrics, opportunities ranking, event detail, recovery execute + policy + idempotency, audit trail + filters, simulator, experiments, root-causes, policies GET/PUT persistence, pagination/filters). All 22 pass when run serially (pytest -n 0). Frontend: E2E via Playwright on the public URL — Overview, DataLoaderModal (default 150), Revenue At Risk, Opportunities, Simulator (7 strategies + Scenario B WAIT recommended), Audit Trail (+filters), Root Causes (6 clusters + 3 breakdowns), Experiments, Policies (save works), Recovery Plans, Settings, Clear-Data empty state, environment selector (no Production). Scenarios A, D, E verified end-to-end. Scenario C (policy block) FAILED — policy ceiling is bypassed and the ₹78,500 event is marked RECOVERED. Dataset was restored to demo initial state at the end (150 events, 000001 FAILED, 000003 ESCALATED, 000004 CAPTURED).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/recovery/execute", "issue": "Policy ceiling bypass: guard is `if amount > human_approval_threshold and action != 'ESCALATE TO HUMAN'`. EVENT_BENCH_000003 (₹78,500) has decision_card.action='ESCALATE TO HUMAN', and the EventDrawer sends exactly that action, so the request skips the block and the endpoint marks the event status=RECOVERED, inserts a CAPTURED attempt and ALLOWED audit rows, returning status=SUCCESS/amount_recovered=78500. Scenario C never blocks in the real demo flow (only blocks if a caller passes a different action). Fix: block on amount>threshold regardless of action, and/or treat 'ESCALATE TO HUMAN' as an approval-request action that must NOT set status=RECOVERED or capture funds.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/opportunities", "issue": "Response is truncated to items[:50] but total_expected_recovery/total_expected_incremental_recovery are summed over ALL items — totals do not match the displayed rows (UI shows ₹17,65,823 pipeline vs 50 visible rows). Also demo hero EVENT_BENCH_000001 (₹4,999) is outside the top 50 (sorting is by absolute incremental value), so the scripted demo step 'open EVENT_BENCH_000001 from /opportunities' is impossible."},
+      {"endpoint": "GET /api/root-causes/summary", "issue": "Clusters overlap/double count: 31+80+39+0+14+1 = 165 for a 150-event dataset (e.g. EVENT_BENCH_000001 appears in customer_level AND already_recovered; 000005 in customer_level AND low_probability). Cluster amounts therefore double count revenue."},
+      {"endpoint": "GET /api/root-causes/summary", "issue": "uncertain_state cluster is always 0 — the generator never emits PENDING/WAITING statuses, so one of the six judge-facing cluster cards is permanently empty."},
+      {"endpoint": "GET /api/system/status", "issue": "available_merchants returns only MERCH_ACME_IN and MERCH_RAZOR_SANDBOX, but the TopHeader dropdown hardcodes a third merchant 'Nova SaaS Technologies' — frontend/backend mismatch."},
+      {"endpoint": "GET /api/experiments/comparison", "issue": "baseline_interventions is computed as one retry per event for BOTH recovered and open events via duplicated branches (lines ~684-690 collapse to the same code) — dead/duplicated logic; also experiment_config says 'Naive single blind retry' while the UI header says 'BASELINE (3 STATIC RETRIES)'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EventDrawer (Scenario C)", "issue": "Executing ₹78,500 EVENT_BENCH_000003 shows the GREEN 'Lifecycle Execution Verified … ₹78,500 Recovered' block plus a success toast; execution-blocked-block never renders. Drawer logic is correct — root cause is the backend guard exemption for action='ESCALATE TO HUMAN'.", "selector": "[data-testid=\"execute-recovery-btn\"], [data-testid=\"execution-blocked-block\"]", "priority": "CRITICAL"},
+      {"component": "OpportunitiesPage", "issue": "Demo hero EVENT_BENCH_000001 is not present in the ranked table (rank > 50), so opp-inspect-btn-EVENT_BENCH_000001 does not exist. Add a search/filter or pin showcase scenarios if the demo script requires opening it from this page.", "selector": "[data-testid=\"opp-inspect-btn-EVENT_BENCH_000001\"]", "priority": "MEDIUM"},
+      {"component": "AuditTrailPage", "issue": "Timestamps render raw ISO with microseconds ('2026-09-03 16:49:39.932907+00:00') for newly executed rows while seeded rows show clean values — format consistently.", "selector": "[data-testid^=\"audit-row-\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Scenario C policy block", "issue": "Frontend sends decisionCard.action to /api/recovery/execute; because the backend exempts 'ESCALATE TO HUMAN' from the ₹50,000 ceiling, a REQUIRES_APPROVAL event gets auto-'recovered' — the guardrail story breaks and revenue_recovered/experiments metrics get inflated by ₹78,500.", "affected_selectors": ["[data-testid=\"execute-recovery-btn\"]", "[data-testid=\"execution-blocked-block\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Experiments", "issues": ["Column header 'BASELINE (3 STATIC RETRIES)' contradicts the config text 'Naive single blind retry @ documented 28% yield' below it", "No card carries the exact provenance string 'Synthetic Benchmark — Not Real Customer Data' (only 'DATA PROVENANCE PROTOCOL' prose); review item expected the exact label"]},
+      {"screen": "Opportunities / Simulator", "issues": ["No page-level provenance label; only the global top banner carries it (Simulator uses different wording 'Synthetic decision simulation — not a production prediction')"]},
+      {"screen": "Root Cause Intelligence", "issues": ["'Uncertain Revenue States' card always shows 0 Events / ₹0 — visually dead tile in the 6-card grid"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "CRITICAL: Fix /api/recovery/execute so amount > human_approval_threshold always returns BLOCKED_BY_POLICY (Scenario C) and 'ESCALATE TO HUMAN' never sets status=RECOVERED / inserts a CAPTURED attempt",
+    "Make the Scenario A hero event reachable from /opportunities (search box, pinned showcase rows, or paginate) or update the demo script to use /revenue-at-risk",
+    "De-duplicate root-cause clusters (assign each event to one primary cluster) or label the cards as overlapping views; consider seeding a few PENDING/WAITING events so 'Uncertain Revenue States' is non-zero",
+    "Align opportunity totals with the returned/visible page, or return the total item count alongside the 50-row slice",
+    "Fix Experiments baseline header wording (28% single blind retry, not '3 static retries') and add the exact provenance string card",
+    "Format audit-trail timestamps; sync merchant dropdown list with /api/system/status.available_merchants"
+  ],
+  "critical_code_review_comments": [
+    "server.py:362 — policy guard exempts action=='ESCALATE TO HUMAN', which is precisely the action the UI sends for above-ceiling events; the guardrail is effectively disabled for the highest-risk case",
+    "server.py:377-397 — execute unconditionally sets status=RECOVERED and writes a CAPTURED attempt for ANY action (including ESCALATE TO HUMAN / WAIT / DO NOTHING); execution semantics should branch per action",
+    "server.py:684-690 — both branches of the baseline-intervention if/else are identical (dead logic)",
+    "server.py:537-539 — items sliced to 50 while totals are computed over the full list (inconsistent aggregates)",
+    "server.py:156/449/499/661 — full-collection .to_list(2000) scans on every request; fine for a 150-event demo but will not hold at the 5000-event preset offered in DataLoaderModal (opportunities/overview would silently truncate at 2000)"
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (22/22 automated pytest cases; 1 CRITICAL functional defect found outside the asserted contract — the ceiling bypass only appears when action='ESCALATE TO HUMAN' is sent)", "frontend": "~90% (Scenarios A/D/E, all 10 nav pages, modal, filters, policies save, empty state pass; Scenario C block fails)"},
+  "seed_data_creation": "Deterministic benchmark regenerated several times via POST /api/benchmark/generate {size:150, seed REVENUE_RESCUE_V1}. Dataset restored to pristine demo state at the end (150 events; EVENT_BENCH_000001 FAILED, 000003 ESCALATED, 000004 CAPTURED).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "None required (no auth). /app/memory/test_credentials.md documents benchmark IDs only.",
+  "context_for_next_testing_agent": "Run backend suite with `cd /app/backend && python -m pytest tests/backend_test.py -v -n 0` — pytest.ini enables xdist and the shared MongoDB dataset makes parallel workers interfere (dataset regeneration in one worker wipes audit events/statuses used by another). Tests are stateful: the session fixture clears + regenerates 150 events, and TestRecoveryExecute mutates EVENT_BENCH_000001/000003/000004; always regenerate the benchmark before frontend E2E. Frontend E2E entry points: /revenue-at-risk search box is the only reliable way to open EVENT_BENCH_00000X drawers (Opportunities only shows top 50 by incremental value). Note: files under /app/backend/tests trigger uvicorn watchfiles reloads on edit (harmless).",
+  "rca_of_the_issue": "Scenario C failure RCA: /api/recovery/execute guard is `if amount > policy.human_approval_threshold and action != 'ESCALATE TO HUMAN'`. EventDrawer.handleExecute posts action = decisionCard.action, which for EVENT_BENCH_000003 is 'ESCALATE TO HUMAN' — the exempted value — so the ceiling check is skipped, the event is flipped to RECOVERED with a CAPTURED attempt and two ALLOWED audit rows, and the drawer renders execution-verification-block instead of execution-blocked-block. Reproduce: POST /api/recovery/execute {event_id:'EVENT_BENCH_000003', action:'ESCALATE TO HUMAN'} on a freshly generated dataset → status SUCCESS, amount_recovered 78500. Mitigation: evaluate the amount ceiling before any action-specific branching and give ESCALATE TO HUMAN its own non-capturing outcome (e.g. status='ESCALATED_FOR_APPROVAL')."
+}

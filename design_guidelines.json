@@ -1,0 +1,96 @@
+{
+  "app_name": "Revenue Rescue",
+  "context": "Razorpay AI Buildathon 2026 - AI Revenue Recovery Track",
+  "app_type": "dashboard",
+  "theme": "dark",
+  "typography": {
+    "headings": {
+      "font_family": "Plus Jakarta Sans, sans-serif",
+      "weights": ["600", "700"],
+      "sizes": {
+        "h1": "text-3xl lg:text-4xl tracking-tight",
+        "h2": "text-2xl font-bold tracking-tight",
+        "h3": "text-xl font-semibold",
+        "h4": "text-lg font-semibold"
+      }
+    },
+    "body": {
+      "font_family": "Inter, sans-serif",
+      "size": "text-sm",
+      "weight": "400"
+    },
+    "mono": {
+      "font_family": "JetBrains Mono, monospace",
+      "usage": "Currency amounts, transaction IDs, timestamps, hash logs"
+    }
+  },
+  "colors": {
+    "primary": "#2B4BF2",
+    "primary_hover": "#1D3AE0",
+    "background_dark": "#0B163F",
+    "card_background": "#132257",
+    "card_border": "#1E347A",
+    "text_main": "#F8FAFC",
+    "text_muted": "#94A3B8",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "risk": "#EF4444",
+    "accent_cyan": "#06B6D4"
+  },
+  "layout": {
+    "sidebar": "fixed left-0 top-0 bottom-0 w-64 bg-[#0B163F] border-r border-[#1E347A] z-40 flex flex-col",
+    "top_nav": "sticky top-0 z-30 h-16 bg-[#0B163F]/90 backdrop-blur-xl border-b border-[#1E347A] px-6 flex items-center justify-between",
+    "main_content": "pl-64 pt-16 min-h-screen bg-[#070E28] text-slate-100 p-8"
+  },
+  "routes": [
+    "/overview",
+    "/revenue-at-risk",
+    "/root-causes",
+    "/opportunities",
+    "/recovery-plans",
+    "/simulator",
+    "/experiments",
+    "/audit-trail",
+    "/policies",
+    "/settings"
+  ],
+  "components_specification": [
+    "MetricCard",
+    "MoneyValue",
+    "StatusBadge",
+    "RiskBadge",
+    "ConfidenceIndicator",
+    "ActionBadge",
+    "PolicyBadge",
+    "DataTable",
+    "FilterBar",
+    "Timeline",
+    "DecisionCard",
+    "RecoveryPlanCard",
+    "EmptyState",
+    "EventDrawer",
+    "ConfirmationModal"
+  ],
+  "features": [
+    "Synthetic Benchmark Loader Mode (CUST_BENCH_0001, EVENT_BENCH_000001)",
+    "Enterprise High-Density layout with Razorpay blue accents",
+    "Conservative Guardrails for policies (2 max attempts, ₹50,000 threshold)",
+    "Evidence-first architecture with strict data provenance indicators",
+    "No PII, Explainable decisions framework, Audit trail with cryptographic proof hashes"
+  ],
+  "image_urls": [
+    {
+      "category": "dashboard_analytics",
+      "url": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwxfHxmaW50ZWNoJTIwYW5hbHl0aWNzJTIwZGFzaGJvYXJkJTIwZGFyayUyMG1vZGV8ZW58MHx8fHwxNzg4NDQ0MjQ0fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Graphs of performance analytics on a dark screen for financial telemetry"
+    }
+  ],
+  "universal_guidelines_for_main_agent": [
+    "DO NOT use complete transparent background in headers or dropdowns",
+    "All interactive elements must include a data-testid attribute",
+    "Use sonner for toasts",
+    "Use Tailwind CSS with high-density enterprise fintech styling",
+    "Ensure Indian currency format (₹, L, Cr) is strictly followed",
+    "All components must be in .js files"
+  ]
+}

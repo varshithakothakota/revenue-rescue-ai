@@ -1,0 +1,38 @@
+{
+  "summary": "Targeted regression retest of the Scenario C policy-guard fix. Backend: new /app/backend/tests/test_scenario_c_regression.py (6 cases) — all pass; existing backend_test.py 22/22 still pass (pytest -n 0). POST /api/recovery/execute for EVENT_BENCH_000003 (₹78,500) now returns status=BLOCKED_BY_POLICY, policy_decision=REQUIRES_APPROVAL, action_executed=false for BOTH action='ESCALATE TO HUMAN' and action='SEND PAYMENT LINK'; DB status stays ESCALATED, no recovered_at, no CAPTURED attempt and no SUCCESS/ALLOWED audit rows (only the seeded ESCALATED/REQUIRES_APPROVAL row). Frontend: Scenario C drawer now renders the persistent red execution-blocked-block ('BLOCKED — HUMAN APPROVAL REQUIRED' + ceiling message + Policy Decision: REQUIRES_APPROVAL), execution-verification-block is absent, banner still visible after 5s, header badge remains 'Escalated to KAM'. Regression: Scenario A (EVENT_BENCH_000001 ₹4,999) executes → SUCCESS/₹4,999 recovered with green verification block, repeat backend call → ALREADY_RECOVERED (UI hides the execute button after success); Scenario D (EVENT_BENCH_000004 CAPTURED ₹18,200) → ALREADY_RECOVERED with state unchanged; unknown event → 404. Sidebar nav (Overview, Audit Trail, Opportunities, Policy Center, Simulator) and the global provenance banner all work. Dataset restored to pristine demo state (150 events; 000001 FAILED, 000003 ESCALATED, 000004 CAPTURED).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/recovery/execute", "issue": "Inconsistent response contract: on BLOCKED/ALREADY paths action_executed is boolean false, but on SUCCESS it is the action STRING ('SEND PAYMENT LINK') instead of true. Harmless for the demo but sloppy for judges/API consumers."},
+      {"endpoint": "POST /api/recovery/execute", "issue": "The block message is always phrased as an amount-ceiling breach; when the block is triggered purely by action=='ESCALATE TO HUMAN' on a below-ceiling amount the message would be misleading (not hit by the current demo data, low priority)."},
+      {"endpoint": "GET /api/opportunities, /api/root-causes/summary, /api/system/status, /api/experiments/comparison", "issue": "All iteration_1 minor issues (50-row slice vs full totals, overlapping root-cause clusters, always-zero uncertain_state, merchant dropdown mismatch, duplicated baseline branches) were NOT part of this iteration's fix and remain open — see iteration_1.json."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EventDrawer", "issue": "Escape key does not close the drawer (overlay stays mounted); only the 'Close Inspector' button / backdrop works. Minor a11y/UX gap.", "selector": "[data-testid=\"event-drawer-overlay\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "EventDrawer (Scenario C)", "issues": ["A blue info toast appears top-right on block; it renders over the drawer header badges (overlaps 'High Risk'/status chips) for a few seconds — consider offsetting the toast container"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_scenario_c_regression.py", "/app/backend/tests/backend_test.py", "/app/test_reports/pytest/scenario_c_results.xml", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "OPTIONAL: normalize action_executed to a boolean on the SUCCESS path of /api/recovery/execute (return executed_action separately)",
+    "OPTIONAL: add Escape-key close handler to EventDrawer",
+    "Remaining iteration_1 minor items (opportunities totals/top-50 slice, root-cause cluster overlap, uncertain_state always 0, merchant dropdown mismatch, experiments baseline wording) are still open if the main agent wants to polish them"
+  ],
+  "critical_code_review_comments": [
+    "server.py:363 — guard is now `amount > threshold or action == 'ESCALATE TO HUMAN'` evaluated before any state mutation; correct and confirmed by tests",
+    "server.py:363 vs 372 — policy block is checked before the ALREADY_RECOVERED check; an above-ceiling event that is already CAPTURED would report BLOCKED_BY_POLICY rather than ALREADY_RECOVERED (no demo scenario hits this, but ordering is debatable)"
+  ],
+  "updated_files": ["/app/backend/tests/test_scenario_c_regression.py"],
+  "success_rate": {"backend": "100% (6/6 new regression cases + 22/22 existing)", "frontend": "100% of retested flows (Scenario C block, Scenario A happy path + idempotency, sidebar nav, provenance banner)"},
+  "seed_data_creation": "Benchmark regenerated via POST /api/benchmark/generate {size:150} before and after testing; final state pristine (000001 FAILED, 000003 ESCALATED, 000004 CAPTURED).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "None required (no auth)",
+  "context_for_next_testing_agent": "Scenario C is FIXED and verified end-to-end. Run backend tests serially: `cd /app/backend && python -m pytest tests/ -v -n 0` (shared MongoDB dataset breaks xdist parallelism). Event detail endpoint is /api/payment-events/{event_id} (there is no /api/events/{id}). Both test files regenerate the 150-event benchmark; always regenerate before frontend E2E. /revenue-at-risk table rows carry data-testid containing the event id and open the drawer; EVENT_BENCH_000001 is not in the top-50 opportunities list.",
+  "rca_of_the_issue": "Iteration_1 defect: the ceiling guard exempted action=='ESCALATE TO HUMAN', which is exactly what the drawer posts for above-ceiling events. Fix at server.py:363 changed the condition to `amount > threshold or action == 'ESCALATE TO HUMAN'`, evaluated before any DB mutation, so the block is now unconditional for ₹78,500 regardless of action. Verified via API (both actions) and via the UI drawer, with DB status/audit rows re-read afterwards to prove no side effects."
+}
